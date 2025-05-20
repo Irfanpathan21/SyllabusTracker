@@ -67,6 +67,10 @@ const summarizeSyllabusFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await summarizeSyllabusPrompt(input);
-    return output!;
+    if (!output) {
+      console.error('LLM output for summarizeSyllabusPrompt was undefined. Input syllabusText length:', input.syllabusText.length);
+      throw new Error('The AI model could not summarize the syllabus content as expected. The output was empty. The PDF might be unparsable or too complex.');
+    }
+    return output;
   }
 );

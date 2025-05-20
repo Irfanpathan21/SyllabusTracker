@@ -71,6 +71,10 @@ const parseSyllabusFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await parseSyllabusPrompt(input);
-    return output!;
+    if (!output) {
+      console.error('LLM output for parseSyllabusPrompt was undefined. Input syllabusText length:', input.syllabusText.length);
+      throw new Error('The AI model could not parse the syllabus content as expected. The output was empty. The PDF might be unparsable or too complex.');
+    }
+    return output;
   }
 );
