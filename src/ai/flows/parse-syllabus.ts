@@ -1,11 +1,12 @@
-//The entire output should be enclosed in one valid JSON object.
+
 'use server';
 /**
- * @fileOverview Parses syllabus text into a structured JSON format with subjects, units, and topics.
+ * @fileOverview Parses syllabus text into a structured JSON format, capable of handling multiple subjects, each with units and topics.
  *
  * - parseSyllabus - A function that accepts syllabus text and returns a structured JSON object.
  * - ParseSyllabusInput - The input type for the parseSyllabus function.
  * - ParseSyllabusOutput - The return type for the parseSyllabus function.
+ * - Subject - TypeScript type for a single subject.
  */
 
 import {ai} from '@/ai/genkit';
@@ -18,14 +19,19 @@ const ParseSyllabusInputSchema = z.object({
 });
 export type ParseSyllabusInput = z.infer<typeof ParseSyllabusInputSchema>;
 
-const ParseSyllabusOutputSchema = z.object({
+const SubjectSchema = z.object({
   subject: z.string().describe('The name of the subject.'),
   units: z.array(
     z.object({
       unit: z.string().describe('The name of the unit.'),
       topics: z.array(z.string().describe('A topic covered in the unit.')),
     })
-  ).describe('An array of units, each containing an array of topics.'),
+  ).describe('An array of units for this subject, each containing an array of topics.'),
+});
+export type Subject = z.infer<typeof SubjectSchema>;
+
+const ParseSyllabusOutputSchema = z.object({
+  subjects: z.array(SubjectSchema).describe('An array of subjects extracted from the syllabus. Each subject has a name and a list of its units and topics.')
 });
 export type ParseSyllabusOutput = z.infer<typeof ParseSyllabusOutputSchema>;
 
@@ -38,10 +44,15 @@ const parseSyllabusPrompt = ai.definePrompt({
   input: {schema: ParseSyllabusInputSchema},
   output: {schema: ParseSyllabusOutputSchema},
   prompt: `You are an AI assistant designed to parse syllabus text and extract structured information.
-  Given the following syllabus text, extract the subject name, units, and topics for each unit.
-  Return the information in JSON format.
+The syllabus might contain information for one or more subjects.
+For each subject found, identify its name, its units, and the topics for each unit.
+Return the information in a JSON object with a single key "subjects". The value of "subjects" should be an array, where each element represents a subject and contains:
+- "subject": The name of the subject (string).
+- "units": An array of objects, where each object represents a unit and contains:
+  - "unit": The name of the unit (string).
+  - "topics": An array of strings, where each string is a topic covered in that unit.
 
-  Syllabus Text: {{{syllabusText}}}
+Syllabus Text: {{{syllabusText}}}
   `,config: {
     safetySettings: [
       {

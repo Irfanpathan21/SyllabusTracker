@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import type { ParseSyllabusOutput, ParseSyllabusOutputSchema } from '@/ai/flows/parse-syllabus';
-import type { SummarizeSyllabusOutput } from '@/ai/flows/summarize-syllabus';
+import type { Subject } from '@/ai/flows/parse-syllabus'; // Updated import
+import type { SubjectSummary } from '@/ai/flows/summarize-syllabus'; // Updated import
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -12,41 +13,41 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Info, CheckCircle2, Circle, BookOpen } from 'lucide-react';
 
-type Unit = Zod.infer<typeof ParseSyllabusOutputSchema.shape.units.element>;
+// Type for a single unit, derived from the Subject type's units array element
+type Unit = Subject['units'][0];
 
 interface SyllabusDisplayProps {
-  parsedSyllabus: ParseSyllabusOutput;
-  syllabusSummary: SummarizeSyllabusOutput;
+  subjectData: Subject; // Renamed and type updated
+  subjectSummaryData: SubjectSummary; // Renamed and type updated
 }
 
-export function SyllabusDisplay({ parsedSyllabus, syllabusSummary }: SyllabusDisplayProps) {
+export function SyllabusDisplay({ subjectData, subjectSummaryData }: SyllabusDisplayProps) {
   const [checkedTopics, setCheckedTopics] = useState<Record<string, boolean>>({});
   const [clientRendered, setClientRendered] = useState(false);
   const [activeAccordionItems, setActiveAccordionItems] = useState<string[]>([]);
 
-
   useEffect(() => {
     setClientRendered(true);
-    // Default to opening all accordion items
-    setActiveAccordionItems(parsedSyllabus.units.map(u => u.unit));
-  }, [parsedSyllabus.units]);
+    // Default to opening all accordion items for the current subject
+    setActiveAccordionItems(subjectData.units.map(u => u.unit));
+  }, [subjectData.units]);
 
 
   const totalTopicsCount = useMemo(() => {
-    return parsedSyllabus.units.reduce((sum, unit) => sum + unit.topics.length, 0);
-  }, [parsedSyllabus.units]);
+    return subjectData.units.reduce((sum, unit) => sum + unit.topics.length, 0);
+  }, [subjectData.units]);
 
   const completedTopicsCount = useMemo(() => {
     return Object.values(checkedTopics).filter(Boolean).length;
   }, [checkedTopics]);
 
-  const overallProgress = useMemo(() => {
+  const subjectProgress = useMemo(() => {
     if (!clientRendered || totalTopicsCount === 0) return 0;
     return Math.round((completedTopicsCount / totalTopicsCount) * 100);
   }, [clientRendered, completedTopicsCount, totalTopicsCount]);
 
   const handleToggleTopic = (unitName: string, topicName: string) => {
-    const key = `${unitName}::${topicName}`;
+    const key = `${subjectData.subject}::${unitName}::${topicName}`; // Make key unique across subjects too
     setCheckedTopics((prev) => ({
       ...prev,
       [key]: !prev[key],
@@ -55,12 +56,12 @@ export function SyllabusDisplay({ parsedSyllabus, syllabusSummary }: SyllabusDis
 
   const calculateUnitProgress = (unit: Unit) => {
     if (!clientRendered || unit.topics.length === 0) return 0;
-    const completedInUnit = unit.topics.filter(topic => checkedTopics[`${unit.unit}::${topic}`]).length;
+    const completedInUnit = unit.topics.filter(topic => checkedTopics[`${subjectData.subject}::${unit.unit}::${topic}`]).length;
     return Math.round((completedInUnit / unit.topics.length) * 100);
   };
   
   if (!clientRendered) {
-    // Basic skeleton for loading state to prevent hydration issues
+    // Basic skeleton for loading state
     return (
       <Card className="shadow-lg mt-6 animate-pulse">
         <CardHeader>
@@ -93,28 +94,28 @@ export function SyllabusDisplay({ parsedSyllabus, syllabusSummary }: SyllabusDis
       <CardHeader className="pb-4">
         <div className="flex items-center gap-3 mb-2">
             <BookOpen className="h-10 w-10 text-primary" />
-            <CardTitle className="text-3xl md:text-4xl font-bold text-primary tracking-tight">{parsedSyllabus.subject}</CardTitle>
+            <CardTitle className="text-3xl md:text-4xl font-bold text-primary tracking-tight">{subjectData.subject}</CardTitle>
         </div>
-        {syllabusSummary.summary && (
+        {subjectSummaryData.subjectSummary && (
            <CardDescription className="text-md text-foreground/90 pt-2 prose prose-sm max-w-none leading-relaxed">
-             <strong className="font-semibold">Overall Summary:</strong> {syllabusSummary.summary}
+             <strong className="font-semibold">Subject Summary:</strong> {subjectSummaryData.subjectSummary}
            </CardDescription>
         )}
       </CardHeader>
       <CardContent className="space-y-8 pt-4">
         <div>
           <div className="flex justify-between items-center mb-1">
-            <Label htmlFor="overall-progress" className="text-lg font-medium text-foreground/90">Overall Progress</Label>
-            <span className="text-lg font-semibold text-accent-foreground">{overallProgress}%</span>
+            <Label htmlFor={`subject-progress-${subjectData.subject}`} className="text-lg font-medium text-foreground/90">Progress for {subjectData.subject}</Label>
+            <span className="text-lg font-semibold text-accent-foreground">{subjectProgress}%</span>
           </div>
-          <Progress id="overall-progress" value={overallProgress} className="w-full h-3 [&>div]:bg-gradient-to-r [&>div]:from-accent [&>div]:to-green-400 rounded-full shadow-inner" aria-label={`Overall syllabus progress: ${overallProgress}%`} />
+          <Progress id={`subject-progress-${subjectData.subject}`} value={subjectProgress} className="w-full h-3 [&>div]:bg-gradient-to-r [&>div]:from-accent [&>div]:to-green-400 rounded-full shadow-inner" aria-label={`Progress for ${subjectData.subject}: ${subjectProgress}%`} />
         </div>
 
         <Accordion type="multiple" value={activeAccordionItems} onValueChange={setActiveAccordionItems} className="w-full space-y-4">
-          {parsedSyllabus.units.map((unit) => {
+          {subjectData.units.map((unit) => {
             const unitProgress = calculateUnitProgress(unit);
             return (
-              <AccordionItem value={unit.unit} key={unit.unit} className="border border-border/70 rounded-lg shadow-md bg-background/70 overflow-hidden transition-shadow hover:shadow-lg">
+              <AccordionItem value={unit.unit} key={`${subjectData.subject}-${unit.unit}`} className="border border-border/70 rounded-lg shadow-md bg-background/70 overflow-hidden transition-shadow hover:shadow-lg">
                 <AccordionTrigger className="px-4 py-3 sm:px-6 sm:py-4 hover:bg-secondary/30 transition-colors data-[state=open]:bg-secondary/20">
                   <div className="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between text-left gap-2 sm:gap-4">
                     <span className="text-xl font-semibold text-primary-foreground bg-primary px-3 py-1.5 rounded-md shadow-sm inline-block max-w-max">
@@ -133,9 +134,9 @@ export function SyllabusDisplay({ parsedSyllabus, syllabusSummary }: SyllabusDis
                   {unit.topics.length > 0 ? (
                     <ul className="space-y-3">
                       {unit.topics.map((topic) => {
-                        const topicKey = `${unit.unit}::${topic}`;
+                        const topicKey = `${subjectData.subject}::${unit.unit}::${topic}`;
                         const isChecked = !!checkedTopics[topicKey];
-                        const topicSummaryPair = syllabusSummary.topicSummaries.find(ts => ts.topicName === topic);
+                        const topicSummaryPair = subjectSummaryData.topicSummaries.find(ts => ts.topicName === topic);
                         const topicSummaryText = topicSummaryPair ? topicSummaryPair.summary : undefined;
                         return (
                           <li key={topicKey} className="flex items-center space-x-3 p-2.5 rounded-md hover:bg-muted/50 transition-colors group">

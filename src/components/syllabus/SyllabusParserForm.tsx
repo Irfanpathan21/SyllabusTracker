@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -5,6 +6,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, AlertTriangle, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { parseSyllabus, type ParseSyllabusOutput } from '@/ai/flows/parse-syllabus';
@@ -36,8 +38,8 @@ export function SyllabusParserForm() {
     setParsedData(null);
     setSummaryData(null);
 
-    try {
-      // Using Promise.all to run both AI flows concurrently
+    try
+    {
       const [parsedResult, summaryResult] = await Promise.all([
         parseSyllabus({ syllabusText }),
         summarizeSyllabus({ syllabusText })
@@ -49,7 +51,7 @@ export function SyllabusParserForm() {
       toast({
         title: 'Syllabus Processed!',
         description: 'Your syllabus has been parsed and summarized successfully.',
-        variant: 'default', // Explicitly 'default' which is green based on our theme now
+        variant: 'default',
       });
     } catch (e: any) {
       console.error('Error processing syllabus:', e);
@@ -67,7 +69,7 @@ export function SyllabusParserForm() {
 
   const handleTextAreaChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setSyllabusText(event.target.value);
-    if (error) setError(null); // Clear error when user types
+    if (error) setError(null);
   };
 
   return (
@@ -111,8 +113,58 @@ export function SyllabusParserForm() {
       )}
 
       {parsedData && summaryData && !isLoading && (
-        <div className="mt-10 pt-6 border-t border-border">
-          <SyllabusDisplay parsedSyllabus={parsedData} syllabusSummary={summaryData} />
+        <div className="mt-10 pt-6 border-t border-border space-y-8">
+          {summaryData.overallSyllabusSummary && (
+            <Card className="shadow-md bg-card/70 backdrop-blur-sm border-primary/20">
+              <CardHeader>
+                <CardTitle className="text-2xl font-semibold text-primary">Overall Syllabus Summary</CardTitle>
+              </CardHeader>
+              <CardDescription className="p-6 pt-0 text-foreground/90 leading-relaxed">
+                {summaryData.overallSyllabusSummary}
+              </CardDescription>
+            </Card>
+          )}
+
+          {parsedData.subjects.length === 0 && (
+            <Alert>
+              <AlertTriangle className="h-5 w-5" />
+              <AlertTitle>No Subjects Found</AlertTitle>
+              <AlertDescription>The AI could not identify distinct subjects in the provided text. The overall summary might still be useful.</AlertDescription>
+            </Alert>
+          )}
+
+          {parsedData.subjects.map((subjectItem, index) => {
+            const subjectDetailedSummary = summaryData.subjectsDetailedSummaries.find(
+              sds => sds.subjectName === subjectItem.subject
+            );
+
+            if (!subjectDetailedSummary) {
+              // Fallback if a specific subject summary is not found, 
+              // but we still want to display the parsed subject structure.
+              // This might happen if the summarization AI fails to match a subject name.
+              console.warn(`No detailed summary found for subject: ${subjectItem.subject}. Displaying with basic structure.`);
+              return (
+                <SyllabusDisplay
+                  key={`${subjectItem.subject}-${index}`}
+                  subjectData={subjectItem}
+                  // Provide a minimal fallback for subjectSummaryData
+                  subjectSummaryData={{
+                    subjectName: subjectItem.subject,
+                    subjectSummary: "No detailed summary available for this subject.",
+                    topicSummaries: [],
+                  }}
+                />
+              );
+            }
+            
+            return (
+              <SyllabusDisplay
+                key={`${subjectItem.subject}-${index}`}
+                subjectData={subjectItem}
+                subjectSummaryData={subjectDetailedSummary}
+              />
+            );
+          })}
         </div>
       )}
     </div>
