@@ -30,12 +30,8 @@ export function SyllabusParserForm() {
 
   useEffect(() => {
     setClientRendered(true);
-    // Set workerSrc for pdf.js.
-    // IMPORTANT: Ensure `pdf.worker.min.js` from `node_modules/pdfjs-dist/build/`
-    // is copied to your `public/` folder and served at `/pdf.worker.min.js`.
     if (typeof window !== 'undefined') {
       pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
-      // pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
     }
   }, []);
 
@@ -88,7 +84,7 @@ export function SyllabusParserForm() {
       const file = event.target.files[0];
       if (file.type === "application/pdf") {
         setSelectedFile(file);
-        if (error) setError(null);
+        if (error) setError(null); // Clear previous error on new file selection
       } else {
         setSelectedFile(null);
         setError("Please select a PDF file.");
@@ -120,7 +116,6 @@ export function SyllabusParserForm() {
     setParsedData(null);
     setSummaryData(null);
     setSelectedSubjectName(null);
-    // setCheckedTopics({}); // Keep existing checked topics if user re-parses, or clear them. Decide based on desired UX.
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -131,7 +126,7 @@ export function SyllabusParserForm() {
           for (let i = 1; i <= pdfDoc.numPages; i++) {
             const page = await pdfDoc.getPage(i);
             const textContent = await page.getTextContent();
-            fullText += textContent.items
+            fullText += (textContent.items || []) // Ensure items is an array
                 .map((item: any) => (item && typeof item.str === 'string' ? item.str : ''))
                 .join(' ') + '\n';
           }
@@ -147,10 +142,20 @@ export function SyllabusParserForm() {
             return;
           }
           
-          const [parsedResult, summaryResult] = await Promise.all([
-            parseSyllabus({ syllabusText: fullText }),
-            summarizeSyllabus({ syllabusText: fullText })
-          ]);
+          let parsedResult, summaryResult;
+          try {
+            parsedResult = await parseSyllabus({ syllabusText: fullText });
+          } catch (aiError: any) {
+            console.error("Error from parseSyllabus AI flow:", aiError);
+            throw new Error(`Syllabus parsing failed: ${aiError.message || 'Unknown error'}`);
+          }
+
+          try {
+            summaryResult = await summarizeSyllabus({ syllabusText: fullText });
+          } catch (aiError: any) {
+            console.error("Error from summarizeSyllabus AI flow:", aiError);
+            throw new Error(`Syllabus summarization failed: ${aiError.message || 'Unknown error'}`);
+          }
           
           setParsedData(parsedResult);
           setSummaryData(summaryResult);
@@ -160,31 +165,28 @@ export function SyllabusParserForm() {
             description: 'Your syllabus PDF has been parsed and summarized successfully.',
             variant: 'default',
           });
-        } catch (pdfError: any) {
-          console.error('Error processing PDF:', pdfError);
-          let userErrorMessage = 'Failed to process the PDF. This could be due to a corrupted or password-protected file.';
-          
-          if (pdfError && typeof pdfError.message === 'string') {
-            if (pdfError.message.toLowerCase().includes('password')) {
+
+        } catch (processError: any) {
+          console.error('Error during PDF processing or AI interaction:', processError);
+          let userErrorMessage = processError.message || 'An unexpected error occurred. Please check the console.';
+
+          if (typeof processError.message === 'string') {
+            if (processError.message.toLowerCase().includes('password')) {
               userErrorMessage = 'The PDF appears to be password-protected. Please use a non-protected PDF.';
-            } else if (pdfError.message.includes('Failed to fetch') || pdfError.message.includes('NetworkError') || pdfError.message.includes('workerSrc') || pdfError.message.includes('module') || pdfError.message.includes('worker failed')) {
+            } else if (processError.message.includes('workerSrc') || processError.message.includes('pdf.worker.min.js')) {
               userErrorMessage = 'Failed to load the PDF processing script (pdf.worker.min.js). This is often a server configuration issue. Please ensure the file exists in the `public/` folder and your server has permissions to serve `.js` files from there. Check the browser\'s Network tab for 403 (Forbidden) or 404 (Not Found) errors for `pdf.worker.min.js`.';
-            } else if (pdfError.name === 'MissingPDFException' || pdfError.name === 'InvalidPDFException') {
+            } else if (processError.name === 'MissingPDFException' || processError.name === 'InvalidPDFException') {
               userErrorMessage = 'The PDF file seems to be missing, invalid, or corrupted. Please try a different file.';
-            } else {
-              userErrorMessage = `An unexpected error occurred while processing the PDF: ${pdfError.message}. Check if the PDF is valid.`;
+            } else if (processError.message.includes("SyntaxError") && (processError.message.includes("JSON") || processError.message.includes("%PDF-"))) {
+              userErrorMessage = "The AI service returned an invalid response (e.g., PDF data instead of JSON). This might indicate an issue with the PDF content confusing the AI, or a server-side problem. Please try again or with a different PDF. Check console for details.";
+            } else if (processError.message.includes('parsing failed') || processError.message.includes('summarization failed')) {
+               userErrorMessage = `An AI processing step failed. This could be due to the content of the PDF. Details: ${processError.message}`;
             }
-          } else if (pdfError && pdfError.name) {
-             if (pdfError.name === 'MissingPDFException' || pdfError.name === 'InvalidPDFException') {
-                userErrorMessage = 'The PDF file seems to be missing, invalid, or corrupted. Please try a different file.';
-             } else {
-                userErrorMessage = `An unexpected error occurred (type: ${pdfError.name}) while processing the PDF.`;
-             }
           }
           
           setError(userErrorMessage);
           toast({
-            title: 'Error Processing PDF',
+            title: 'Processing Error',
             description: userErrorMessage,
             variant: 'destructive',
           });
@@ -360,5 +362,4 @@ export function SyllabusParserForm() {
     </div>
   );
 }
-
     
