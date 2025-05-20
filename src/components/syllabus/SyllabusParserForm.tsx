@@ -31,10 +31,7 @@ export function SyllabusParserForm() {
   useEffect(() => {
     setClientRendered(true);
     if (typeof window !== 'undefined') {
-      // Ensure the workerSrc is set for pdfjs-dist
-      // Option 1: Point to a local copy in the public folder
       pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
-      // Option 2: Point to a CDN (use if local serving is problematic)
       // pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
     }
   }, []);
@@ -88,7 +85,7 @@ export function SyllabusParserForm() {
       const file = event.target.files[0];
       if (file.type === "application/pdf") {
         setSelectedFile(file);
-        if (error) setError(null); // Clear previous error on new file selection
+        if (error) setError(null);
       } else {
         setSelectedFile(null);
         setError("Please select a PDF file.");
@@ -130,7 +127,7 @@ export function SyllabusParserForm() {
           for (let i = 1; i <= pdfDoc.numPages; i++) {
             const page = await pdfDoc.getPage(i);
             const textContent = await page.getTextContent();
-            fullText += (textContent.items || []) 
+            fullText += (textContent.items || [])
                 .map((item: any) => (item && typeof item.str === 'string' ? item.str : ''))
                 .join(' ') + '\n';
           }
@@ -151,14 +148,16 @@ export function SyllabusParserForm() {
             parsedResult = await parseSyllabus({ syllabusText: fullText });
           } catch (aiError: any) {
             console.error("Error from parseSyllabus AI flow:", aiError);
-            throw new Error(`Syllabus parsing failed: ${aiError.message || 'Unknown AI error during parsing'}`);
+            const message = aiError.message || 'Unknown AI error during parsing';
+             throw new Error(`Syllabus parsing failed: ${message}`);
           }
 
           try {
             summaryResult = await summarizeSyllabus({ syllabusText: fullText });
           } catch (aiError: any) {
             console.error("Error from summarizeSyllabus AI flow:", aiError);
-            throw new Error(`Syllabus summarization failed: ${aiError.message || 'Unknown AI error during summarization'}`);
+            const message = aiError.message || 'Unknown AI error during summarization';
+            throw new Error(`Syllabus summarization failed: ${message}`);
           }
           
           setParsedData(parsedResult);
@@ -173,18 +172,19 @@ export function SyllabusParserForm() {
         } catch (processError: any) {
           console.error('Error during PDF processing or AI interaction:', processError);
           let userErrorMessage = processError.message || 'An unexpected error occurred. Please check the console.';
-
+          
           if (typeof processError.message === 'string') {
             if (processError.message.toLowerCase().includes('password')) {
               userErrorMessage = 'The PDF appears to be password-protected. Please use a non-protected PDF.';
             } else if (processError.message.includes('workerSrc') || processError.message.includes('pdf.worker.min.js') || processError.message.includes('Failed to fetch dynamically imported module')) {
               userErrorMessage = 'Failed to load the PDF processing script (pdf.worker.min.js). This is very often a server configuration or permissions issue. Please ensure `pdf.worker.min.js` exists in your `public/` folder and your server can serve `.js` files from there (check for 403 Forbidden or 404 Not Found errors in the browser\'s Network tab for `pdf.worker.min.js`).';
             } else if (processError.message.includes('Unknown action from worker')) {
-              userErrorMessage = 'PDF processing failed due to an "Unknown action from worker" error. This strongly indicates that `pdf.worker.min.js` could not be loaded or initialized correctly. Please verify it is in your `public/` folder and that your server environment is serving it correctly (check for 403/404 errors for this file in the browser Network tab).';
+                 userErrorMessage = 'PDF processing failed due to an "Unknown action from worker" error. This strongly indicates that `pdf.worker.min.js` could not be loaded or initialized correctly. Please verify it is in your `public/` folder and that your server environment is serving it correctly (check for 403/404 errors for this file in the browser Network tab). This is likely a server configuration or deployment issue.';
             } else if (processError.name === 'MissingPDFException' || processError.name === 'InvalidPDFException') {
               userErrorMessage = 'The PDF file seems to be missing, invalid, or corrupted. Please try a different file.';
-            } else if (processError.message.includes("SyntaxError") && (processError.message.includes("JSON") || processError.message.includes("%PDF-"))) {
-              userErrorMessage = "The AI service returned an invalid response (e.g., PDF data instead of JSON). This might indicate an issue with the PDF content confusing the AI, or a server-side problem with the AI flow. Please try again or with a different PDF. Check console for details.";
+            } else if (processError instanceof SyntaxError && (processError.message.includes("JSON") || processError.message.includes("Unexpected token '%") || processError.message.toLowerCase().includes("pdf"))) {
+              console.error("Detailed SyntaxError:", processError, "Raw response might have been non-JSON (e.g., PDF content).");
+              userErrorMessage = "The AI service returned an unexpected response that was not valid JSON (it might have been PDF content or an unformatted error). This can happen if the PDF content is complex or causes an unhandled server error. Please try a different PDF or check server logs.";
             } else if (processError.message.includes('parsing failed') || processError.message.includes('summarization failed')) {
                userErrorMessage = `An AI processing step failed. This could be due to the content of the PDF. Details: ${processError.message}`;
             }
@@ -252,7 +252,7 @@ export function SyllabusParserForm() {
           </div>
            {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name}</p>}
           <p className="text-xs text-muted-foreground mt-1">
-            Upload your syllabus PDF. Text will be extracted. Crucial: `pdf.worker.min.js` must be in your `public/` folder and correctly served by your environment.
+            Upload your syllabus PDF. Crucial: `pdf.worker.min.js` must be in your `public/` folder and correctly served.
           </p>
         </div>
         <Button type="submit" disabled={isLoading || !selectedFile} className="w-full sm:w-auto text-base py-3 px-6 shadow-md hover:shadow-lg transition-shadow duration-200">
