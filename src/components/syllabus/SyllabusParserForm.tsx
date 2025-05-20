@@ -32,9 +32,10 @@ export function SyllabusParserForm() {
     setClientRendered(true);
     // Set workerSrc for pdf.js.
     // IMPORTANT: Ensure `pdf.worker.min.js` from `node_modules/pdfjs-dist/build/`
-    // is copied to your `public/` folder.
+    // is copied to your `public/` folder and served at `/pdf.worker.min.js`.
     if (typeof window !== 'undefined') {
       pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
+      // pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
     }
   }, []);
 
@@ -119,7 +120,7 @@ export function SyllabusParserForm() {
     setParsedData(null);
     setSummaryData(null);
     setSelectedSubjectName(null);
-    setCheckedTopics({});
+    // setCheckedTopics({}); // Keep existing checked topics if user re-parses, or clear them. Decide based on desired UX.
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -130,7 +131,6 @@ export function SyllabusParserForm() {
           for (let i = 1; i <= pdfDoc.numPages; i++) {
             const page = await pdfDoc.getPage(i);
             const textContent = await page.getTextContent();
-            // Refined text extraction
             fullText += textContent.items
                 .map((item: any) => (item && typeof item.str === 'string' ? item.str : ''))
                 .join(' ') + '\n';
@@ -162,14 +162,30 @@ export function SyllabusParserForm() {
           });
         } catch (pdfError: any) {
           console.error('Error processing PDF:', pdfError);
-          let errorMessage = 'Failed to process PDF. It might be corrupted, password-protected, or the PDF worker script is not loading correctly.';
-          if (pdfError.message) {
-            errorMessage = `PDF Processing Error: ${pdfError.message}. Check if 'pdf.worker.min.js' is in the public folder.`;
+          let userErrorMessage = 'Failed to process the PDF. This could be due to a corrupted or password-protected file.';
+          
+          if (pdfError && typeof pdfError.message === 'string') {
+            if (pdfError.message.toLowerCase().includes('password')) {
+              userErrorMessage = 'The PDF appears to be password-protected. Please use a non-protected PDF.';
+            } else if (pdfError.message.includes('Failed to fetch') || pdfError.message.includes('NetworkError') || pdfError.message.includes('workerSrc') || pdfError.message.includes('module') || pdfError.message.includes('worker failed')) {
+              userErrorMessage = 'Failed to load the PDF processing script (pdf.worker.min.js). This is often a server configuration issue. Please ensure the file exists in the `public/` folder and your server has permissions to serve `.js` files from there. Check the browser\'s Network tab for 403 (Forbidden) or 404 (Not Found) errors for `pdf.worker.min.js`.';
+            } else if (pdfError.name === 'MissingPDFException' || pdfError.name === 'InvalidPDFException') {
+              userErrorMessage = 'The PDF file seems to be missing, invalid, or corrupted. Please try a different file.';
+            } else {
+              userErrorMessage = `An unexpected error occurred while processing the PDF: ${pdfError.message}. Check if the PDF is valid.`;
+            }
+          } else if (pdfError && pdfError.name) {
+             if (pdfError.name === 'MissingPDFException' || pdfError.name === 'InvalidPDFException') {
+                userErrorMessage = 'The PDF file seems to be missing, invalid, or corrupted. Please try a different file.';
+             } else {
+                userErrorMessage = `An unexpected error occurred (type: ${pdfError.name}) while processing the PDF.`;
+             }
           }
-          setError(errorMessage);
+          
+          setError(userErrorMessage);
           toast({
             title: 'Error Processing PDF',
-            description: errorMessage,
+            description: userErrorMessage,
             variant: 'destructive',
           });
         } finally {
@@ -228,7 +244,7 @@ export function SyllabusParserForm() {
           </div>
            {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name}</p>}
           <p className="text-xs text-muted-foreground mt-1">
-            Upload your syllabus PDF. Text will be extracted for processing. Ensure `pdf.worker.min.js` is in your public folder.
+            Upload your syllabus PDF. Text will be extracted for processing. Ensure `pdf.worker.min.js` is in your public folder and servable.
           </p>
         </div>
         <Button type="submit" disabled={isLoading || !selectedFile} className="w-full sm:w-auto text-base py-3 px-6 shadow-md hover:shadow-lg transition-shadow duration-200">
