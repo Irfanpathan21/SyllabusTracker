@@ -2,20 +2,22 @@
 'use client';
 
 import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from 'react';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input'; // Changed from Textarea
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
-import { Loader2, AlertTriangle, Wand2, ArrowLeft, BookOpen } from 'lucide-react';
+import { Loader2, AlertTriangle, Wand2, ArrowLeft, BookOpen, FileUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { parseSyllabus, type ParseSyllabusOutput, type Subject } from '@/ai/flows/parse-syllabus';
 import { summarizeSyllabus, type SummarizeSyllabusOutput, type SubjectSummary } from '@/ai/flows/summarize-syllabus';
 import { SyllabusDisplay } from './SyllabusDisplay';
+import * as pdfjsLib from 'pdfjs-dist';
+// Ensure pdf.worker.min.js from node_modules/pdfjs-dist/build/ is in your public/ folder.
 
 export function SyllabusParserForm() {
-  const [syllabusText, setSyllabusText] = useState<string>('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<ParseSyllabusOutput | null>(null);
   const [summaryData, setSummaryData] = useState<SummarizeSyllabusOutput | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -29,6 +31,12 @@ export function SyllabusParserForm() {
 
   useEffect(() => {
     setClientRendered(true);
+    // Set workerSrc for pdf.js. This is crucial for it to work correctly.
+    // You'll need to copy 'pdf.worker.min.js' from 'node_modules/pdfjs-dist/build/'
+    // to your 'public/' folder and then this line will work:
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
+    // As a fallback for local development if the above file is not copied, you can use a CDN:
+    // pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
   }, []);
 
   const handleToggleTopic = (subjectName: string, unitName: string, topicName: string) => {
@@ -75,13 +83,33 @@ export function SyllabusParserForm() {
     }
   }, [clientRendered, parsedData, checkedTopics]);
 
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.type === "application/pdf") {
+        setSelectedFile(file);
+        if (error) setError(null);
+      } else {
+        setSelectedFile(null);
+        setError("Please select a PDF file.");
+        toast({
+          title: 'Invalid File Type',
+          description: 'Please select a PDF file.',
+          variant: 'destructive',
+        });
+      }
+    } else {
+      setSelectedFile(null);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!syllabusText.trim()) {
-      setError('Syllabus text cannot be empty.');
+    if (!selectedFile) {
+      setError('Please select a PDF file to upload.');
       toast({
         title: 'Input Error',
-        description: 'Syllabus text cannot be empty.',
+        description: 'No PDF file selected.',
         variant: 'destructive',
       });
       return;
@@ -92,39 +120,78 @@ export function SyllabusParserForm() {
     setParsedData(null);
     setSummaryData(null);
     setSelectedSubjectName(null);
-    setCheckedTopics({}); // Reset progress
+    setCheckedTopics({});
 
-    try {
-      const [parsedResult, summaryResult] = await Promise.all([
-        parseSyllabus({ syllabusText }),
-        summarizeSyllabus({ syllabusText })
-      ]);
-      
-      setParsedData(parsedResult);
-      setSummaryData(summaryResult);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      if (e.target?.result && e.target.result instanceof ArrayBuffer) {
+        try {
+          const pdfDoc = await pdfjsLib.getDocument({ data: e.target.result }).promise;
+          let fullText = '';
+          for (let i = 1; i <= pdfDoc.numPages; i++) {
+            const page = await pdfDoc.getPage(i);
+            const textContent = await page.getTextContent();
+            fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n'; // basic text extraction
+          }
 
+          if (!fullText.trim()) {
+            setError('The PDF appears to contain no text or text extraction failed.');
+            toast({
+              title: 'Empty PDF Content',
+              description: 'Could not extract any text from the PDF. Ensure it is a text-based PDF.',
+              variant: 'destructive',
+            });
+            setIsLoading(false);
+            return;
+          }
+          
+          const [parsedResult, summaryResult] = await Promise.all([
+            parseSyllabus({ syllabusText: fullText }),
+            summarizeSyllabus({ syllabusText: fullText })
+          ]);
+          
+          setParsedData(parsedResult);
+          setSummaryData(summaryResult);
+
+          toast({
+            title: 'Syllabus Processed!',
+            description: 'Your syllabus PDF has been parsed and summarized successfully.',
+            variant: 'default',
+          });
+        } catch (pdfError: any) {
+          console.error('Error processing PDF:', pdfError);
+          const errorMessage = pdfError.message || 'Failed to process PDF. It might be corrupted or password-protected.';
+          setError(errorMessage);
+          toast({
+            title: 'Error Processing PDF',
+            description: errorMessage,
+            variant: 'destructive',
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        setError('Failed to read PDF file content.');
+        toast({
+            title: 'File Reading Error',
+            description: 'Could not read the selected file content.',
+            variant: 'destructive',
+        });
+        setIsLoading(false);
+      }
+    };
+    reader.onerror = () => {
+      console.error('File reading error.');
+      setError('Failed to read the file.');
       toast({
-        title: 'Syllabus Processed!',
-        description: 'Your syllabus has been parsed and summarized successfully.',
-        variant: 'default',
-      });
-    } catch (e: any) {
-      console.error('Error processing syllabus:', e);
-      const errorMessage = e.message || 'Failed to process syllabus. Please check the console for more details.';
-      setError(errorMessage);
-      toast({
-        title: 'Error Processing Syllabus',
-        description: errorMessage,
+        title: 'File Reading Error',
+        description: 'An error occurred while trying to read the file.',
         variant: 'destructive',
       });
-    } finally {
       setIsLoading(false);
-    }
-  };
+    };
 
-  const handleTextAreaChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    setSyllabusText(event.target.value);
-    if (error) setError(null);
+    reader.readAsArrayBuffer(selectedFile);
   };
 
   const selectedSubjectData: Subject | undefined = useMemo(() => {
@@ -142,29 +209,33 @@ export function SyllabusParserForm() {
     <div className="space-y-6">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Textarea
-            placeholder="Paste your full syllabus text here..."
-            value={syllabusText}
-            onChange={handleTextAreaChange}
-            rows={15}
-            className="border-input focus:ring-primary text-sm shadow-sm rounded-md p-3"
-            disabled={isLoading}
-            aria-label="Syllabus Text Input"
-          />
+          <Label htmlFor="syllabus-upload" className="text-sm font-medium">Syllabus PDF</Label>
+          <div className="mt-1 flex items-center space-x-2">
+            <Input
+              id="syllabus-upload"
+              type="file"
+              accept="application/pdf"
+              onChange={handleFileChange}
+              className="flex-grow border-input focus:ring-primary text-sm shadow-sm rounded-md p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+              disabled={isLoading}
+              aria-label="Syllabus PDF Upload"
+            />
+          </div>
+           {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name}</p>}
           <p className="text-xs text-muted-foreground mt-1">
-            The more complete the syllabus, the better the parsing and summarization results.
+            Upload your syllabus PDF. Text will be extracted for processing.
           </p>
         </div>
-        <Button type="submit" disabled={isLoading || !syllabusText.trim()} className="w-full sm:w-auto text-base py-3 px-6 shadow-md hover:shadow-lg transition-shadow duration-200">
+        <Button type="submit" disabled={isLoading || !selectedFile} className="w-full sm:w-auto text-base py-3 px-6 shadow-md hover:shadow-lg transition-shadow duration-200">
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Processing...
+              Processing PDF...
             </>
           ) : (
             <>
-              <Wand2 className="mr-2 h-5 w-5" />
-              Parse Syllabus
+              <FileUp className="mr-2 h-5 w-5" />
+              Parse Syllabus PDF
             </>
           )}
         </Button>

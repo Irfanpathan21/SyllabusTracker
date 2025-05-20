@@ -11,7 +11,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Info, CheckCircle2, Circle, BookOpen } from 'lucide-react';
+import { Info, CheckCircle2, Circle, BookOpen, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
 
 type Unit = Subject['units'][0];
 
@@ -28,14 +30,20 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData, checkedTopics
 
   useEffect(() => {
     setClientRendered(true);
-    setActiveAccordionItems(subjectData.units.map(u => u.unit));
-  }, [subjectData.units]);
+    // Initialize accordion items to be open if subjectData.units exists
+    if (subjectData && subjectData.units) {
+      setActiveAccordionItems(subjectData.units.map(u => u.unit));
+    }
+  }, [subjectData]);
+
 
   const totalTopicsCount = useMemo(() => {
+    if (!subjectData || !subjectData.units) return 0;
     return subjectData.units.reduce((sum, unit) => sum + unit.topics.length, 0);
-  }, [subjectData.units]);
+  }, [subjectData]);
 
   const completedTopicsCount = useMemo(() => {
+    if (!subjectData || !subjectData.units) return 0;
     let count = 0;
     subjectData.units.forEach(unit => {
         unit.topics.forEach(topic => {
@@ -53,12 +61,12 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData, checkedTopics
   }, [clientRendered, completedTopicsCount, totalTopicsCount]);
 
   const calculateUnitProgress = (unit: Unit) => {
-    if (!clientRendered || unit.topics.length === 0) return 0;
+    if (!clientRendered || unit.topics.length === 0 || !subjectData) return 0;
     const completedInUnit = unit.topics.filter(topic => checkedTopics[`${subjectData.subject}::${unit.unit}::${topic}`]).length;
     return Math.round((completedInUnit / unit.topics.length) * 100);
   };
   
-  if (!clientRendered && !subjectData) { // Added !subjectData check for safety during initial renders
+  if (!clientRendered && !subjectData) { 
     return (
       <Card className="shadow-lg mt-6 animate-pulse">
         <CardHeader>
@@ -85,7 +93,7 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData, checkedTopics
     );
   }
 
-  if (!subjectData) { // Handle case where subjectData might be temporarily undefined
+  if (!subjectData) { 
       return (
         <Alert variant="destructive">
             <AlertTriangle className="h-5 w-5" />
@@ -103,7 +111,7 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData, checkedTopics
             <BookOpen className="h-10 w-10 text-primary" />
             <CardTitle className="text-3xl md:text-4xl font-bold text-primary tracking-tight">{subjectData.subject}</CardTitle>
         </div>
-        {subjectSummaryData.subjectSummary && (
+        {subjectSummaryData?.subjectSummary && (
            <CardDescription className="text-md text-foreground/90 pt-2 prose prose-sm max-w-none leading-relaxed">
              <strong className="font-semibold">Subject Summary:</strong> {subjectSummaryData.subjectSummary}
            </CardDescription>
@@ -143,7 +151,7 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData, checkedTopics
                       {unit.topics.map((topic) => {
                         const topicKey = `${subjectData.subject}::${unit.unit}::${topic}`;
                         const isChecked = !!checkedTopics[topicKey];
-                        const topicSummaryPair = subjectSummaryData.topicSummaries.find(ts => ts.topicName === topic);
+                        const topicSummaryPair = subjectSummaryData?.topicSummaries.find(ts => ts.topicName === topic);
                         const topicSummaryText = topicSummaryPair ? topicSummaryPair.summary : undefined;
                         return (
                           <li key={topicKey} className="flex items-center space-x-3 p-2.5 rounded-md hover:bg-muted/50 transition-colors group">
