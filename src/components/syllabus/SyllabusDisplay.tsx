@@ -2,8 +2,8 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import type { Subject } from '@/ai/flows/parse-syllabus'; // Updated import
-import type { SubjectSummary } from '@/ai/flows/summarize-syllabus'; // Updated import
+import type { Subject } from '@/ai/flows/parse-syllabus';
+import type { SubjectSummary } from '@/ai/flows/summarize-syllabus';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -13,46 +13,44 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Info, CheckCircle2, Circle, BookOpen } from 'lucide-react';
 
-// Type for a single unit, derived from the Subject type's units array element
 type Unit = Subject['units'][0];
 
 interface SyllabusDisplayProps {
-  subjectData: Subject; // Renamed and type updated
-  subjectSummaryData: SubjectSummary; // Renamed and type updated
+  subjectData: Subject;
+  subjectSummaryData: SubjectSummary;
+  checkedTopics: Record<string, boolean>;
+  handleToggleTopic: (subjectName: string, unitName: string, topicName: string) => void;
 }
 
-export function SyllabusDisplay({ subjectData, subjectSummaryData }: SyllabusDisplayProps) {
-  const [checkedTopics, setCheckedTopics] = useState<Record<string, boolean>>({});
+export function SyllabusDisplay({ subjectData, subjectSummaryData, checkedTopics, handleToggleTopic }: SyllabusDisplayProps) {
   const [clientRendered, setClientRendered] = useState(false);
   const [activeAccordionItems, setActiveAccordionItems] = useState<string[]>([]);
 
   useEffect(() => {
     setClientRendered(true);
-    // Default to opening all accordion items for the current subject
     setActiveAccordionItems(subjectData.units.map(u => u.unit));
   }, [subjectData.units]);
-
 
   const totalTopicsCount = useMemo(() => {
     return subjectData.units.reduce((sum, unit) => sum + unit.topics.length, 0);
   }, [subjectData.units]);
 
   const completedTopicsCount = useMemo(() => {
-    return Object.values(checkedTopics).filter(Boolean).length;
-  }, [checkedTopics]);
+    let count = 0;
+    subjectData.units.forEach(unit => {
+        unit.topics.forEach(topic => {
+            if (checkedTopics[`${subjectData.subject}::${unit.unit}::${topic}`]) {
+                count++;
+            }
+        });
+    });
+    return count;
+  }, [checkedTopics, subjectData]);
 
   const subjectProgress = useMemo(() => {
     if (!clientRendered || totalTopicsCount === 0) return 0;
     return Math.round((completedTopicsCount / totalTopicsCount) * 100);
   }, [clientRendered, completedTopicsCount, totalTopicsCount]);
-
-  const handleToggleTopic = (unitName: string, topicName: string) => {
-    const key = `${subjectData.subject}::${unitName}::${topicName}`; // Make key unique across subjects too
-    setCheckedTopics((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  };
 
   const calculateUnitProgress = (unit: Unit) => {
     if (!clientRendered || unit.topics.length === 0) return 0;
@@ -60,8 +58,7 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData }: SyllabusDis
     return Math.round((completedInUnit / unit.topics.length) * 100);
   };
   
-  if (!clientRendered) {
-    // Basic skeleton for loading state
+  if (!clientRendered && !subjectData) { // Added !subjectData check for safety during initial renders
     return (
       <Card className="shadow-lg mt-6 animate-pulse">
         <CardHeader>
@@ -86,6 +83,16 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData }: SyllabusDis
         </CardContent>
       </Card>
     );
+  }
+
+  if (!subjectData) { // Handle case where subjectData might be temporarily undefined
+      return (
+        <Alert variant="destructive">
+            <AlertTriangle className="h-5 w-5" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>Subject data is not available. Please try again.</AlertDescription>
+        </Alert>
+      );
   }
 
 
@@ -143,7 +150,7 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData }: SyllabusDis
                             <Checkbox
                               id={topicKey}
                               checked={isChecked}
-                              onCheckedChange={() => handleToggleTopic(unit.unit, topic)}
+                              onCheckedChange={() => handleToggleTopic(subjectData.subject, unit.unit, topic)}
                               aria-labelledby={`${topicKey}-label`}
                               className="border-primary/50 data-[state=checked]:bg-accent data-[state=checked]:border-accent-foreground"
                             />
@@ -185,3 +192,4 @@ export function SyllabusDisplay({ subjectData, subjectSummaryData }: SyllabusDis
     </Card>
   );
 }
+
