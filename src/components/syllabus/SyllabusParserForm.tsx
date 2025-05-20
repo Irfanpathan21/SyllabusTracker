@@ -2,21 +2,20 @@
 'use client';
 
 import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from 'react';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
-import { Loader2, AlertTriangle, ArrowLeft, BookOpen, FileUp } from 'lucide-react';
+import { Loader2, AlertTriangle, ArrowLeft, BookOpen, Edit3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { parseSyllabus, type ParseSyllabusOutput, type Subject } from '@/ai/flows/parse-syllabus';
 import { summarizeSyllabus, type SummarizeSyllabusOutput, type SubjectSummary } from '@/ai/flows/summarize-syllabus';
 import { SyllabusDisplay } from './SyllabusDisplay';
-import * as pdfjsLib from 'pdfjs-dist';
 
 export function SyllabusParserForm() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [syllabusText, setSyllabusText] = useState<string>('');
   const [parsedData, setParsedData] = useState<ParseSyllabusOutput | null>(null);
   const [summaryData, setSummaryData] = useState<SummarizeSyllabusOutput | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -27,15 +26,9 @@ export function SyllabusParserForm() {
   const [checkedTopics, setCheckedTopics] = useState<Record<string, boolean>>({});
   const [overallProgress, setOverallProgress] = useState(0);
   const [clientRendered, setClientRendered] = useState(false);
-  const [syllabusTextContent, setSyllabusTextContent] = useState<string | null>(null);
-
 
   useEffect(() => {
     setClientRendered(true);
-    if (typeof window !== 'undefined') {
-      // Ensure this path correctly points to the worker script in your public folder
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
-    }
   }, []);
 
   const handleToggleTopic = (subjectName: string, unitName: string, topicName: string) => {
@@ -82,37 +75,20 @@ export function SyllabusParserForm() {
     }
   }, [clientRendered, parsedData, checkedTopics]);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      if (file.type === "application/pdf") {
-        setSelectedFile(file);
-        setParsedData(null); // Reset previous results
-        setSummaryData(null);
-        setSelectedSubjectName(null);
-        setSyllabusTextContent(null); // Reset text content
-        if (error) setError(null);
-      } else {
-        setSelectedFile(null);
-        setError("Please select a PDF file.");
-        toast({
-          title: 'Invalid File Type',
-          description: 'Please select a PDF file.',
-          variant: 'destructive',
-        });
-      }
-    } else {
-      setSelectedFile(null);
+  const handleTextChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setSyllabusText(event.target.value);
+    if (event.target.value.trim() !== '') {
+        if (error) setError(null); // Clear error if user starts typing valid text
     }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedFile) {
-      setError('Please select a PDF file to upload.');
+    if (!syllabusText.trim()) {
+      setError('Please paste your syllabus text.');
       toast({
         title: 'Input Error',
-        description: 'No PDF file selected.',
+        description: 'Syllabus text cannot be empty.',
         variant: 'destructive',
       });
       return;
@@ -123,115 +99,66 @@ export function SyllabusParserForm() {
     setParsedData(null);
     setSummaryData(null);
     setSelectedSubjectName(null);
-    setSyllabusTextContent(null);
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      if (e.target?.result && e.target.result instanceof ArrayBuffer) {
-        let extractedText = '';
-        try {
-          console.log('Attempting to load PDF worker from:', pdfjsLib.GlobalWorkerOptions.workerSrc);
-          const pdfDoc = await pdfjsLib.getDocument({ data: e.target.result }).promise;
-          for (let i = 1; i <= pdfDoc.numPages; i++) {
-            const page = await pdfDoc.getPage(i);
-            const textContent = await page.getTextContent();
-            extractedText += (textContent.items || [])
-                .map((item: any) => (item && typeof item.str === 'string' ? item.str : ''))
-                .join(' ') + '\n';
-          }
-
-          if (!extractedText.trim()) {
-            setError('No text could be extracted from the PDF. It might be an image-based PDF, empty, or too complex for text extraction.');
-            toast({
-              title: 'Empty PDF Content',
-              description: 'Could not extract any text from the PDF. Please ensure it is a text-based PDF.',
-              variant: 'destructive',
-            });
-            setIsLoading(false);
-            return;
-          }
-          setSyllabusTextContent(extractedText); // Store extracted text
-
-          // Call AI flows
-          let parsedResult, summaryResult;
-          try {
-            parsedResult = await parseSyllabus({ syllabusText: extractedText });
-          } catch (aiError: any) {
-            console.error("Error from parseSyllabus AI flow:", aiError);
-            const message = aiError.message || 'Unknown AI error during parsing';
-            throw new Error(`Syllabus parsing failed: ${message}. This could be due to the PDF content complexity or an issue with the AI model's response.`);
-          }
-
-          try {
-            summaryResult = await summarizeSyllabus({ syllabusText: extractedText });
-          } catch (aiError: any) {
-            console.error("Error from summarizeSyllabus AI flow:", aiError);
-            const message = aiError.message || 'Unknown AI error during summarization';
-            throw new Error(`Syllabus summarization failed: ${message}. This could be due to the PDF content complexity or an issue with the AI model's response.`);
-          }
-          
-          setParsedData(parsedResult);
-          setSummaryData(summaryResult);
-
-          toast({
-            title: 'Syllabus Processed!',
-            description: 'Your syllabus PDF has been parsed and summarized successfully.',
-            variant: 'default',
-          });
-
-        } catch (processError: any) {
-          console.error('Error during PDF processing or AI interaction:', processError);
-          let userErrorMessage = processError.message || 'An unexpected error occurred during processing. Please try a different PDF or check the console.';
-          
-          const errStr = String(processError.message).toLowerCase();
-          const nameStr = String(processError.name).toLowerCase();
-
-          if (errStr.includes('worker') || errStr.includes('pdf.worker.min.js') || nameStr.includes('worker')) {
-            userErrorMessage = 'PDF Processing Error: Failed to load or use the PDF worker script (`pdf.worker.min.js`). This is critical for reading PDFs. '+
-                               'Please take these steps: \n1. Verify `pdf.worker.min.js` is in your `public/` folder. \n2. Open your browser\'s Developer Tools (Network tab), try uploading again, and check the request for `/pdf.worker.min.js`. Is its status 200 OK? If it\'s 403 (Forbidden), 404 (Not Found), or another error, your server is not serving this file correctly. This is a server configuration issue that must be fixed in your deployment environment (e.g., Cloud Workstations).';
-          } else if (nameStr === 'missingpdfexception' || nameStr === 'invalidpdfexception' || errStr.includes('invalid pdf') ) {
-            userErrorMessage = 'The PDF file seems to be missing, invalid, or corrupted. Please try a different file.';
-          } else if (processError instanceof SyntaxError && (errStr.includes("json") || errStr.includes("unexpected token")) && extractedText && extractedText.trim().startsWith('%PDF-')) {
-            console.error("Detailed SyntaxError (likely PDF content returned as JSON from AI):", processError);
-            userErrorMessage = "An AI service returned an unexpected response that was not valid JSON; it may have returned PDF content. This can occur if the PDF is very complex or triggers an unhandled error on the server during AI processing. Please try a different PDF, or check server logs and the browser's Network tab for specific details on the AI service's response.";
-          } else if (errStr.includes('parsing failed') || errStr.includes('summarization failed')) {
-             userErrorMessage = `An AI processing step failed. This could be due to the content of the PDF. Details: ${processError.message}`;
-          } else if (errStr.includes('password')) {
-            userErrorMessage = 'The PDF appears to be password-protected. Please use a non-protected PDF.';
-          }
-          
-          setError(userErrorMessage);
-          toast({
-            title: 'Processing Error',
-            description: userErrorMessage,
-            variant: 'destructive',
-            duration: 15000, // Keep this important message visible longer
-          });
-        } finally {
-          setIsLoading(false);
-        }
-      } else {
-        setError('Failed to read PDF file content. The file might be corrupted or not a valid ArrayBuffer.');
+    try {
+      if (!syllabusText.trim()) {
+        setError('Syllabus text is empty. Please paste your syllabus content.');
         toast({
-            title: 'File Reading Error',
-            description: 'Could not read the selected file content.',
-            variant: 'destructive',
+          title: 'Empty Content',
+          description: 'Cannot process empty syllabus text.',
+          variant: 'destructive',
         });
         setIsLoading(false);
+        return;
       }
-    };
-    reader.onerror = () => {
-      console.error('File reading error.');
-      setError('Failed to read the file. An unexpected error occurred during file reading.');
-      toast({
-        title: 'File Reading Error',
-        description: 'An error occurred while trying to read the file. Check browser console for details.',
-        variant: 'destructive',
-      });
-      setIsLoading(false);
-    };
 
-    reader.readAsArrayBuffer(selectedFile);
+      let parsedResult, summaryResult;
+      try {
+        parsedResult = await parseSyllabus({ syllabusText });
+      } catch (aiError: any) {
+        console.error("Error from parseSyllabus AI flow:", aiError);
+        const message = aiError.message || 'Unknown AI error during parsing';
+        throw new Error(`Syllabus parsing failed: ${message}.`);
+      }
+
+      try {
+        summaryResult = await summarizeSyllabus({ syllabusText });
+      } catch (aiError: any) {
+        console.error("Error from summarizeSyllabus AI flow:", aiError);
+        const message = aiError.message || 'Unknown AI error during summarization';
+        throw new Error(`Syllabus summarization failed: ${message}.`);
+      }
+      
+      setParsedData(parsedResult);
+      setSummaryData(summaryResult);
+
+      toast({
+        title: 'Syllabus Processed!',
+        description: 'Your syllabus text has been parsed and summarized successfully.',
+        variant: 'default',
+      });
+
+    } catch (processError: any) {
+      console.error('Error during AI interaction:', processError);
+      let userErrorMessage = processError.message || 'An unexpected error occurred during processing. Please try again.';
+      
+      const errStr = String(processError.message).toLowerCase();
+      if (errStr.includes('parsing failed') || errStr.includes('summarization failed')) {
+         userErrorMessage = `An AI processing step failed. Details: ${processError.message}`;
+      } else if (errStr.includes("unexpected token") && errStr.includes("json")) {
+        userErrorMessage = "An AI service returned an unexpected response that was not valid JSON. This can occur if the AI model fails to structure its output correctly. Please try rephrasing or simplifying your input syllabus text.";
+      }
+      
+      setError(userErrorMessage);
+      toast({
+        title: 'Processing Error',
+        description: userErrorMessage,
+        variant: 'destructive',
+        duration: 10000, 
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const selectedSubjectData: Subject | undefined = useMemo(() => {
@@ -249,33 +176,31 @@ export function SyllabusParserForm() {
     <div className="space-y-6">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="syllabus-upload" className="text-sm font-medium">Syllabus PDF</Label>
-          <div className="mt-1 flex items-center space-x-2">
-            <Input
-              id="syllabus-upload"
-              type="file"
-              accept="application/pdf"
-              onChange={handleFileChange}
-              className="flex-grow border-input focus:ring-primary text-sm shadow-sm rounded-md p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-              disabled={isLoading}
-              aria-label="Syllabus PDF Upload"
-            />
-          </div>
-           {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name}</p>}
+          <Label htmlFor="syllabus-text" className="text-sm font-medium">Syllabus Text</Label>
+          <Textarea
+            id="syllabus-text"
+            value={syllabusText}
+            onChange={handleTextChange}
+            placeholder="Paste your syllabus text here..."
+            rows={10}
+            className="mt-1 w-full border-input focus:ring-primary text-sm shadow-sm rounded-md p-2"
+            disabled={isLoading}
+            aria-label="Syllabus Text Input"
+          />
           <p className="text-xs text-muted-foreground mt-1">
-            Upload your syllabus PDF. The file `pdf.worker.min.js` must be in your `public/` folder and correctly served by your server for this to work.
+            Paste the full text of your syllabus into the area above.
           </p>
         </div>
-        <Button type="submit" disabled={isLoading || !selectedFile} className="w-full sm:w-auto text-base py-3 px-6 shadow-md hover:shadow-lg transition-shadow duration-200">
+        <Button type="submit" disabled={isLoading || !syllabusText.trim()} className="w-full sm:w-auto text-base py-3 px-6 shadow-md hover:shadow-lg transition-shadow duration-200">
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Processing PDF...
+              Processing Text...
             </>
           ) : (
             <>
-              <FileUp className="mr-2 h-5 w-5" />
-              Parse Syllabus PDF
+              <Edit3 className="mr-2 h-5 w-5" />
+              Parse Syllabus Text
             </>
           )}
         </Button>
@@ -379,6 +304,4 @@ export function SyllabusParserForm() {
     </div>
   );
 }
-    
-
     
