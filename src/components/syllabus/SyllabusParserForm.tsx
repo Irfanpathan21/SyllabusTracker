@@ -31,12 +31,10 @@ export function SyllabusParserForm() {
   useEffect(() => {
     setClientRendered(true);
     // Set workerSrc for pdf.js.
-    // Using CDN as it's more reliable across different environments if local serving of /pdf.worker.min.js fails.
-    // You can switch to local serving by copying 'pdf.worker.min.js' from 'node_modules/pdfjs-dist/build/'
-    // to your 'public/' folder and using:
-    // pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
-    if (typeof window !== 'undefined') { // Ensure this runs only in the browser
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    // IMPORTANT: Ensure `pdf.worker.min.js` from `node_modules/pdfjs-dist/build/`
+    // is copied to your `public/` folder.
+    if (typeof window !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
     }
   }, []);
 
@@ -132,14 +130,17 @@ export function SyllabusParserForm() {
           for (let i = 1; i <= pdfDoc.numPages; i++) {
             const page = await pdfDoc.getPage(i);
             const textContent = await page.getTextContent();
-            fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n';
+            // Refined text extraction
+            fullText += textContent.items
+                .map((item: any) => (item && typeof item.str === 'string' ? item.str : ''))
+                .join(' ') + '\n';
           }
 
           if (!fullText.trim()) {
-            setError('The PDF appears to contain no text or text extraction failed.');
+            setError('No text could be extracted from the PDF. It might be an image-based PDF or empty.');
             toast({
               title: 'Empty PDF Content',
-              description: 'Could not extract any text from the PDF. Ensure it is a text-based PDF.',
+              description: 'Could not extract any text from the PDF. Please ensure it is a text-based PDF.',
               variant: 'destructive',
             });
             setIsLoading(false);
@@ -161,7 +162,10 @@ export function SyllabusParserForm() {
           });
         } catch (pdfError: any) {
           console.error('Error processing PDF:', pdfError);
-          const errorMessage = pdfError.message || 'Failed to process PDF. It might be corrupted or password-protected.';
+          let errorMessage = 'Failed to process PDF. It might be corrupted, password-protected, or the PDF worker script is not loading correctly.';
+          if (pdfError.message) {
+            errorMessage = `PDF Processing Error: ${pdfError.message}. Check if 'pdf.worker.min.js' is in the public folder.`;
+          }
           setError(errorMessage);
           toast({
             title: 'Error Processing PDF',
@@ -172,7 +176,7 @@ export function SyllabusParserForm() {
           setIsLoading(false);
         }
       } else {
-        setError('Failed to read PDF file content.');
+        setError('Failed to read PDF file content. The file might be corrupted.');
         toast({
             title: 'File Reading Error',
             description: 'Could not read the selected file content.',
@@ -183,7 +187,7 @@ export function SyllabusParserForm() {
     };
     reader.onerror = () => {
       console.error('File reading error.');
-      setError('Failed to read the file.');
+      setError('Failed to read the file. An unexpected error occurred.');
       toast({
         title: 'File Reading Error',
         description: 'An error occurred while trying to read the file.',
@@ -224,7 +228,7 @@ export function SyllabusParserForm() {
           </div>
            {selectedFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFile.name}</p>}
           <p className="text-xs text-muted-foreground mt-1">
-            Upload your syllabus PDF. Text will be extracted for processing.
+            Upload your syllabus PDF. Text will be extracted for processing. Ensure `pdf.worker.min.js` is in your public folder.
           </p>
         </div>
         <Button type="submit" disabled={isLoading || !selectedFile} className="w-full sm:w-auto text-base py-3 px-6 shadow-md hover:shadow-lg transition-shadow duration-200">
@@ -340,3 +344,5 @@ export function SyllabusParserForm() {
     </div>
   );
 }
+
+    
