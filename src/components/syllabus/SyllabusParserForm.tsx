@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from 'react';
-import { Input } from '@/components/ui/input'; // Changed from Textarea
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,6 @@ import { parseSyllabus, type ParseSyllabusOutput, type Subject } from '@/ai/flow
 import { summarizeSyllabus, type SummarizeSyllabusOutput, type SubjectSummary } from '@/ai/flows/summarize-syllabus';
 import { SyllabusDisplay } from './SyllabusDisplay';
 import * as pdfjsLib from 'pdfjs-dist';
-// Ensure pdf.worker.min.js from node_modules/pdfjs-dist/build/ is in your public/ folder.
 
 export function SyllabusParserForm() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -31,12 +30,14 @@ export function SyllabusParserForm() {
 
   useEffect(() => {
     setClientRendered(true);
-    // Set workerSrc for pdf.js. This is crucial for it to work correctly.
-    // You'll need to copy 'pdf.worker.min.js' from 'node_modules/pdfjs-dist/build/'
-    // to your 'public/' folder and then this line will work:
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
-    // As a fallback for local development if the above file is not copied, you can use a CDN:
-    // pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    // Set workerSrc for pdf.js.
+    // Using CDN as it's more reliable across different environments if local serving of /pdf.worker.min.js fails.
+    // You can switch to local serving by copying 'pdf.worker.min.js' from 'node_modules/pdfjs-dist/build/'
+    // to your 'public/' folder and using:
+    // pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
+    if (typeof window !== 'undefined') { // Ensure this runs only in the browser
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    }
   }, []);
 
   const handleToggleTopic = (subjectName: string, unitName: string, topicName: string) => {
@@ -131,7 +132,7 @@ export function SyllabusParserForm() {
           for (let i = 1; i <= pdfDoc.numPages; i++) {
             const page = await pdfDoc.getPage(i);
             const textContent = await page.getTextContent();
-            fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n'; // basic text extraction
+            fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n';
           }
 
           if (!fullText.trim()) {
@@ -251,7 +252,6 @@ export function SyllabusParserForm() {
 
       {parsedData && summaryData && !isLoading && (
         <div className="mt-10 pt-6 border-t border-border space-y-8">
-          {/* Overall Summary and Progress */}
           <Card className="shadow-md bg-card/70 backdrop-blur-sm border-primary/20">
             <CardHeader>
               <CardTitle className="text-2xl font-semibold text-primary">Overall Syllabus Overview</CardTitle>
@@ -275,7 +275,6 @@ export function SyllabusParserForm() {
           </Card>
 
           {selectedSubjectName && selectedSubjectData && selectedSubjectSummaryData ? (
-            // Display selected subject details
             <div>
               <Button onClick={() => setSelectedSubjectName(null)} variant="outline" className="mb-6 shadow-sm hover:shadow-md transition-shadow">
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -289,7 +288,6 @@ export function SyllabusParserForm() {
               />
             </div>
           ) : (
-            // Display subject cards
             <>
               {parsedData.subjects.length === 0 && (
                 <Alert>
@@ -342,4 +340,3 @@ export function SyllabusParserForm() {
     </div>
   );
 }
-
