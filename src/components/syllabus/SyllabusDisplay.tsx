@@ -135,7 +135,8 @@ export function SyllabusDisplay({ parsedSyllabus, syllabusSummary }: SyllabusDis
                       {unit.topics.map((topic) => {
                         const topicKey = `${unit.unit}::${topic}`;
                         const isChecked = !!checkedTopics[topicKey];
-                        const topicSummary = syllabusSummary.topicSummaries[topic];
+                        const topicSummaryPair = syllabusSummary.topicSummaries.find(ts => ts.topicName === topic);
+                        const topicSummaryText = topicSummaryPair ? topicSummaryPair.summary : undefined;
                         return (
                           <li key={topicKey} className="flex items-center space-x-3 p-2.5 rounded-md hover:bg-muted/50 transition-colors group">
                             <Checkbox
@@ -148,7 +149,7 @@ export function SyllabusDisplay({ parsedSyllabus, syllabusSummary }: SyllabusDis
                             <Label htmlFor={topicKey} id={`${topicKey}-label`} className={`flex-1 text-sm cursor-pointer ${isChecked ? 'line-through text-muted-foreground' : 'text-foreground/90'}`}>
                               {topic}
                             </Label>
-                            {topicSummary && (
+                            {topicSummaryText && (
                               <Popover>
                                 <PopoverTrigger asChild>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary rounded-full">
@@ -160,7 +161,7 @@ export function SyllabusDisplay({ parsedSyllabus, syllabusSummary }: SyllabusDis
                                   <div className="space-y-2">
                                     <h4 className="font-semibold leading-none text-primary">{topic}</h4>
                                     <p className="text-sm text-popover-foreground/80 leading-relaxed">
-                                      {topicSummary}
+                                      {topicSummaryText}
                                     </p>
                                   </div>
                                 </PopoverContent>

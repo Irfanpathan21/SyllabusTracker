@@ -15,9 +15,14 @@ const SummarizeSyllabusInputSchema = z.object({
 });
 export type SummarizeSyllabusInput = z.infer<typeof SummarizeSyllabusInputSchema>;
 
+const TopicSummarySchema = z.object({
+  topicName: z.string().describe('The name of the topic.'),
+  summary: z.string().describe('The summary for this topic.'),
+});
+
 const SummarizeSyllabusOutputSchema = z.object({
   summary: z.string().describe('A summary of the entire syllabus.'),
-  topicSummaries: z.record(z.string(), z.string()).describe('A map of topic names to their summaries.'),
+  topicSummaries: z.array(TopicSummarySchema).describe('A list of topics, where each topic has a name and its summary.'),
 });
 export type SummarizeSyllabusOutput = z.infer<typeof SummarizeSyllabusOutputSchema>;
 
@@ -33,7 +38,9 @@ const summarizeSyllabusPrompt = ai.definePrompt({
 
 Syllabus Text: {{{syllabusText}}}
 
-Output a JSON object containing a summary of the entire syllabus, and a map of topic names to their individual summaries.`,
+Output a JSON object containing:
+1. "summary": A summary of the entire syllabus.
+2. "topicSummaries": A list of objects, where each object has a "topicName" (string) and its corresponding "summary" (string).`,
 });
 
 const summarizeSyllabusFlow = ai.defineFlow(
