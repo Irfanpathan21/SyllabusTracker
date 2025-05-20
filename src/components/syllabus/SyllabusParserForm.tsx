@@ -169,9 +169,10 @@ export function SyllabusParserForm() {
             variant: 'default',
           });
 
-        } catch (processError: any) {
+        } catch (processError: any)
+        {
           console.error('Error during PDF processing or AI interaction:', processError);
-          let userErrorMessage = processError.message || 'An unexpected error occurred. Please check the console.';
+          let userErrorMessage = processError.message || 'An unexpected error occurred during processing. Please check the console for more details or try a different PDF.';
           
           if (typeof processError.message === 'string') {
             if (processError.message.toLowerCase().includes('password')) {
@@ -182,9 +183,9 @@ export function SyllabusParserForm() {
                  userErrorMessage = 'PDF processing failed due to an "Unknown action from worker" error. This strongly indicates that `pdf.worker.min.js` could not be loaded or initialized correctly. Please verify it is in your `public/` folder and that your server environment is serving it correctly (check for 403/404 errors for this file in the browser Network tab). This is likely a server configuration or deployment issue.';
             } else if (processError.name === 'MissingPDFException' || processError.name === 'InvalidPDFException') {
               userErrorMessage = 'The PDF file seems to be missing, invalid, or corrupted. Please try a different file.';
-            } else if (processError instanceof SyntaxError && (processError.message.includes("JSON") || processError.message.includes("Unexpected token '%") || processError.message.toLowerCase().includes("pdf"))) {
-              console.error("Detailed SyntaxError:", processError, "Raw response might have been non-JSON (e.g., PDF content).");
-              userErrorMessage = "The AI service returned an unexpected response that was not valid JSON (it might have been PDF content or an unformatted error). This can happen if the PDF content is complex or causes an unhandled server error. Please try a different PDF or check server logs.";
+            } else if (processError instanceof SyntaxError && (processError.message.toLowerCase().includes("json") || processError.message.toLowerCase().includes("unexpected token") || processError.message.toLowerCase().includes("%pdf-"))) {
+              console.error("Detailed SyntaxError (likely PDF content returned as JSON):", processError, "Raw response might have been non-JSON (e.g., PDF content).");
+              userErrorMessage = "The AI service returned an unexpected response that was not valid JSON; it appears to be PDF content. This can occur if the PDF is very complex or triggers an unhandled error on the server during AI processing. Please try a different PDF, or check server logs and the browser's Network tab for specific details on the AI service's response.";
             } else if (processError.message.includes('parsing failed') || processError.message.includes('summarization failed')) {
                userErrorMessage = `An AI processing step failed. This could be due to the content of the PDF. Details: ${processError.message}`;
             }
